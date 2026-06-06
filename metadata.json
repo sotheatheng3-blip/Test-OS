@@ -1,0 +1,6 @@
+{
+  "name": "Device Link",
+  "description": "Seamless remote hardware management over Bluetooth and WiFi. Real-time monitoring, telemetry tracking, and automated firmware updates.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
