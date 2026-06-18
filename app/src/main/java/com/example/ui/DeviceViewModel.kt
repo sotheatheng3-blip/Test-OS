@@ -42,7 +42,17 @@ data class LiveTelemetry(
     val rssi: Int = -58,
     val relayState1: Boolean = false,
     val relayState2: Boolean = false,
-    val ledBrightness: Float = 0.5f // PWM
+    val ledBrightness: Float = 0.5f, // PWM
+    val storageTotalGb: Int = 128,
+    val storageUsedGb: Float = 64.5f,
+    val ramTotalGb: Int = 16,
+    val ramUsedGb: Float = 10.4f,
+    val eSimEnabled: Boolean = false,
+    val eSimCarrier: String = "Global Core Network",
+    val eSimIccid: String = "",
+    val eSimSignalStrength: Int = -120, // Offline by default
+    val eSimStatus: String = "Inactive", // "Inactive", "Provisioning", "Connecting", "Connected", "Error"
+    val eSimDataUsedMb: Float = 0.0f
 )
 
 class DeviceViewModel(application: Application) : AndroidViewModel(application) {
@@ -131,6 +141,142 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun setStorageTotalGb(total: Int) {
+        _telemetry.update {
+            val used = it.storageUsedGb.coerceAtMost(total.toFloat())
+            it.copy(storageTotalGb = total, storageUsedGb = used)
+        }
+        val cur = _activeDevice.value
+        if (cur != null) {
+            log(cur.id, "INFO", "Hardware storage partition limit re-allocated to ${total}G.")
+        }
+    }
+
+    fun setRamTotalGb(total: Int) {
+        _telemetry.update {
+            val used = it.ramUsedGb.coerceAtMost(total.toFloat())
+            it.copy(ramTotalGb = total, ramUsedGb = used)
+        }
+        val cur = _activeDevice.value
+        if (cur != null) {
+            log(cur.id, "INFO", "System RAM hardware profiles expanded to ${total}G memory.")
+        }
+    }
+
+    fun toggleESim(enabled: Boolean) {
+        val currentDevice = _activeDevice.value ?: return
+        if (enabled) {
+            _telemetry.update {
+                it.copy(
+                    eSimEnabled = true,
+                    eSimStatus = "Connecting"
+                )
+            }
+            log(currentDevice.id, "INFO", "eSIM: Powering up transceiver and querying local GSMA eUICC card...")
+            viewModelScope.launch {
+                delay(1200)
+                if (_telemetry.value.eSimIccid.isEmpty()) {
+                    // Automatically provision default core eSIM or prompt for activation code
+                    val randomIccid = "89049032" + (1000000000L + Random.nextLong(9000000000L)).toString()
+                    _telemetry.update {
+                        it.copy(
+                            eSimStatus = "Connected",
+                            eSimIccid = randomIccid,
+                            eSimCarrier = "Global Core Network",
+                            eSimSignalStrength = -82,
+                            eSimDataUsedMb = 0.0f
+                        )
+                    }
+                    log(currentDevice.id, "INFO", "eSIM Activated: Provisioned default Global Core Profile.")
+                    log(currentDevice.id, "INFO", "eSIM Connection Status: ATTACHED to LTE-M Band 8 (carrier=Global Core Network, iccid=$randomIccid).")
+                } else {
+                    _telemetry.update {
+                        it.copy(
+                            eSimStatus = "Connected",
+                            eSimSignalStrength = -80
+                        )
+                    }
+                    log(currentDevice.id, "INFO", "eSIM Connected: Established connection successfully with ${_telemetry.value.eSimCarrier}.")
+                }
+            }
+        } else {
+            _telemetry.update {
+                it.copy(
+                    eSimEnabled = false,
+                    eSimStatus = "Inactive",
+                    eSimSignalStrength = -120
+                )
+            }
+            log(currentDevice.id, "WARN", "eSIM: Transceiver set to Ultra Low Power mode. Cellular radio detached.")
+        }
+    }
+
+    fun provisionESimProfile(activationCode: String, carrier: String) {
+        val currentDevice = _activeDevice.value ?: return
+        _telemetry.update {
+            it.copy(
+                eSimStatus = "Provisioning",
+                eSimEnabled = true
+            )
+        }
+        viewModelScope.launch {
+            log(currentDevice.id, "INFO", "RSP (Remote SIM Provisioning): Starting SM-DP+ registration...")
+            log(currentDevice.id, "INFO", "RSP: Handshake initialized with GSMA-accredited server: custom code $activationCode.")
+            delay(1200)
+            
+            log(currentDevice.id, "INFO", "RSP: Authenticating eUICC profile signature with security keys...")
+            delay(1000)
+            
+            log(currentDevice.id, "INFO", "RSP: Processing ES9+ Profile Download and Installation Payload...")
+            delay(1500)
+            
+            val randomIccid = "89" + (100000000000000000L + Random.nextLong(900000000000000000L)).toString().take(17)
+            _telemetry.update {
+                it.copy(
+                    eSimStatus = "Connected",
+                    eSimCarrier = carrier,
+                    eSimIccid = randomIccid,
+                    eSimSignalStrength = -78,
+                    eSimDataUsedMb = 0.0f
+                )
+            }
+            log(currentDevice.id, "INFO", "RSP Success: eSIM Profile fully loaded & enabled. ICCID=$randomIccid, Carrier=$carrier.")
+            log(currentDevice.id, "INFO", "eSIM cellular channel established: Attached to local carrier towers.")
+        }
+    }
+
+    fun runSimulatedSpeedTest() {
+        val currentDevice = _activeDevice.value ?: return
+        val currentStatus = _telemetry.value.eSimStatus
+        if (currentStatus != "Connected") {
+            log(currentDevice.id, "ERROR", "LTE-M/NB-IoT Speed Test Failed: eSIM transceiver is offline.")
+            return
+        }
+        
+        viewModelScope.launch {
+            log(currentDevice.id, "INFO", "Speedtest: Commencing network throughput diagnostic over eSIM channel...")
+            log(currentDevice.id, "INFO", "Speedtest: Testing latency / jitter with nearest edge latency point...")
+            delay(1000)
+            log(currentDevice.id, "INFO", "Speedtest: Ping=14ms, Jitter=1.8ms.")
+            
+            log(currentDevice.id, "INFO", "Speedtest: Commencing Downlink (DL) burst stream testing...")
+            delay(1200)
+            val df = String.format("%.2f", 45f + Random.nextFloat() * 15f)
+            log(currentDevice.id, "INFO", "Speedtest: Downlink completion. DL Throughput = $df Mbps")
+            
+            log(currentDevice.id, "INFO", "Speedtest: Commencing Uplink (UL) saturation burst...")
+            delay(1200)
+            val uf = String.format("%.2f", 12f + Random.nextFloat() * 5f)
+            log(currentDevice.id, "INFO", "Speedtest: Uplink completion. UL Throughput = $uf Mbps")
+            
+            // Add tested data usage to cellular data counter
+            _telemetry.update {
+                it.copy(eSimDataUsedMb = it.eSimDataUsedMb + 18.5f)
+            }
+            log(currentDevice.id, "INFO", "Speedtest: Transistor diagnostic test completed. Consumed 18.50 MB cellular quota.")
+        }
+    }
+
     private val pairingEngine = SecurePairingEngine()
 
     private data class PairingSession(
@@ -166,7 +312,10 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                             status = "Disconnected",
                             firmwareVersion = "v1.0.0",
                             lastConnected = System.currentTimeMillis() - 86400000 * 2,
-                            category = "Smart Home"
+                            category = "Smart Home",
+                            batteryLevel = 100,
+                            signalStrength = -50,
+                            operationalMode = "Idle"
                         ),
                         DeviceEntity(
                             id = "DEV-BLE-IOT",
@@ -176,7 +325,10 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                             status = "Disconnected",
                             firmwareVersion = "v1.1.5",
                             lastConnected = System.currentTimeMillis() - 3600000,
-                            category = "Industrial"
+                            category = "Industrial",
+                            batteryLevel = 100,
+                            signalStrength = -50,
+                            operationalMode = "Idle"
                         ),
                         DeviceEntity(
                             id = "DEV-IOS-BRIDGE",
@@ -186,11 +338,29 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                             status = "Disconnected",
                             firmwareVersion = "v1.0.0",
                             lastConnected = System.currentTimeMillis() - 172800000,
-                            category = "iOS Companion"
+                            category = "iOS Companion",
+                            batteryLevel = 100,
+                            signalStrength = -50,
+                            operationalMode = "Idle"
                         )
                     )
                     initial.forEach { deviceDao.insertDevice(it) }
                     log("SYSTEM", "INFO", "Database pre-populated with default controller templates.")
+                }
+            }
+        }
+
+        // Global telemetry simulator for all connected devices
+        viewModelScope.launch {
+            while (true) {
+                delay(2500)
+                val connectedDevices = savedDevices.value.filter { it.status == "Connected" }
+                for (dev in connectedDevices) {
+                    val currentBattery = if (dev.batteryLevel <= 5) 100 else dev.batteryLevel
+                    val newBattery = (currentBattery - Random.nextInt(0, 2)).coerceIn(5, 100)
+                    val newSignal = (-85 + Random.nextInt(0, 45))
+                    val newMode = if (_activeDevice.value?.id == dev.id) "Diagnostic" else listOf("Active", "Standby", "Processing").random()
+                    deviceDao.updateDeviceTelemetry(dev.id, newBattery, newSignal, newMode)
                 }
             }
         }
@@ -411,9 +581,6 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     fun connectToDevice(device: DeviceEntity) {
         if (_activeDevice.value?.id == device.id && _connectionState.value == "Connected") return
 
-        // Dux disconnect from previous first
-        disconnectActive()
-
         _activeDevice.value = device
         _connectionState.value = "Connecting"
         _deviceLogs.value = emptyList()
@@ -423,7 +590,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
             
             // Connect timeline
             delay(1200)
-            if (_connectionState.value == "Connecting") {
+            if (_connectionState.value == "Connecting" && _activeDevice.value?.id == device.id) {
                 _connectionState.value = "Connected"
                 deviceDao.updateDeviceStatus(device.id, "Connected", System.currentTimeMillis())
                 _activeDevice.update { it?.copy(status = "Connected", lastConnected = System.currentTimeMillis()) }
@@ -438,21 +605,25 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // Disconnect connection
-    fun disconnectActive() {
-        val current = _activeDevice.value
-        telemetryJob?.cancel()
-        _connectionState.value = "Disconnected"
-        _activeDevice.value = null
-        _telemetry.value = LiveTelemetry()
-        _otaState.value = OtaState.Idle
-
-        if (current != null) {
-            viewModelScope.launch {
-                deviceDao.updateDeviceStatus(current.id, "Disconnected", System.currentTimeMillis())
-                log(current.id, "INFO", "Channel successfully disconnected by user.")
+    fun disconnectDevice(deviceId: String) {
+        viewModelScope.launch {
+            deviceDao.updateDeviceStatus(deviceId, "Disconnected", System.currentTimeMillis())
+            log(deviceId, "INFO", "Channel successfully disconnected by user.")
+            
+            if (_activeDevice.value?.id == deviceId) {
+                telemetryJob?.cancel()
+                _connectionState.value = "Disconnected"
+                _activeDevice.value = null
+                _telemetry.value = LiveTelemetry()
+                _otaState.value = OtaState.Idle
             }
         }
+    }
+
+    // Disconnect active connection
+    fun disconnectActive() {
+        val current = _activeDevice.value ?: return
+        disconnectDevice(current.id)
     }
 
     // Delete a device from Room database
@@ -539,13 +710,48 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
                 val randomRssi = -50 - Random.nextInt(15)
                 val sramFree = 128 - (32 + (currentPwm * 10).toInt() + (if (currentRelayA) 4 else 0) + Random.nextInt(5))
 
+                val currentStorageTotal = _telemetry.value.storageTotalGb
+                val currentRamTotal = _telemetry.value.ramTotalGb
+                
+                // Simulate periodic file read/write or log saving which alters storage utilization slightly!
+                val storageOffset = if (Random.nextBoolean()) Random.nextFloat() * 0.25f else -Random.nextFloat() * 0.15f
+                val newStorageUsed = (_telemetry.value.storageUsedGb + storageOffset)
+                    .coerceIn(10.0f, currentStorageTotal.toFloat() * 0.95f)
+                
+                // Simulate RAM overhead scaling with CPU load and LED controller PWM
+                val baseRam = currentRamTotal * 0.35f // 35% basic background services
+                val loadRam = (currentCpu / 100f) * (currentRamTotal * 0.3f) 
+                val pwmRam = currentPwm * (currentRamTotal * 0.15f)
+                val newRamUsed = (baseRam + loadRam + pwmRam + Random.nextFloat() * 0.25f)
+                    .coerceIn(1.5f, currentRamTotal.toFloat() * 0.98f)
+
+                val currentEsim = _telemetry.value
+                val newEsimSignal = if (currentEsim.eSimEnabled && currentEsim.eSimStatus == "Connected") {
+                    (-75 - Random.nextInt(15)).coerceIn(-115, -60)
+                } else {
+                    -120
+                }
+                val esimDataOffset = if (currentEsim.eSimEnabled && currentEsim.eSimStatus == "Connected") {
+                    0.02f + Random.nextFloat() * 0.08f
+                } else {
+                    0.0f
+                }
+
                 _telemetry.update {
                     it.copy(
                         temperature = String.format("%.1f", tempBase).toFloat(),
                         cpuLoad = String.format("%.1f", currentCpu).toFloat(),
                         sramUsage = sramFree,
                         rssi = randomRssi,
-                        inputVoltage = String.format("%.2f", 4.98f + Random.nextFloat() * 0.1f).toFloat()
+                        inputVoltage = String.format("%.2f", 4.98f + Random.nextFloat() * 0.1f).toFloat(),
+                        storageUsedGb = String.format("%.2f", newStorageUsed).toFloat(),
+                        ramUsedGb = String.format("%.2f", newRamUsed).toFloat(),
+                        eSimSignalStrength = newEsimSignal,
+                        eSimDataUsedMb = if (currentEsim.eSimEnabled && currentEsim.eSimStatus == "Connected") {
+                            String.format("%.2f", currentEsim.eSimDataUsedMb + esimDataOffset).toFloat()
+                        } else {
+                            currentEsim.eSimDataUsedMb
+                        }
                     )
                 }
 
@@ -625,7 +831,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // Local helper to append and database log
-    private fun log(deviceId: String, level: String, message: String) {
+    fun log(deviceId: String, level: String, message: String) {
         viewModelScope.launch {
             val logEntry = LogEntity(
                 deviceId = deviceId,

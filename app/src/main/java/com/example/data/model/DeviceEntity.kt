@@ -13,5 +13,8 @@ data class DeviceEntity(
     val firmwareVersion: String,
     val lastConnected: Long,
     val category: String, // "Smart Home", "Industrial", "Robotics", "iOS Companion"
-    val supportsOta: Boolean = true
+    val supportsOta: Boolean = true,
+    val batteryLevel: Int = 100,
+    val signalStrength: Int = -50,
+    val operationalMode: String = "Idle"
 )

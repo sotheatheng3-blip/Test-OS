@@ -26,6 +26,9 @@ interface DeviceDao {
     @Query("UPDATE devices SET status = :status, lastConnected = :lastConnected WHERE id = :deviceId")
     suspend fun updateDeviceStatus(deviceId: String, status: String, lastConnected: Long)
 
+    @Query("UPDATE devices SET batteryLevel = :batteryLevel, signalStrength = :signalStrength, operationalMode = :operationalMode WHERE id = :deviceId")
+    suspend fun updateDeviceTelemetry(deviceId: String, batteryLevel: Int, signalStrength: Int, operationalMode: String)
+
     @Query("UPDATE devices SET firmwareVersion = :version WHERE id = :deviceId")
     suspend fun updateDeviceFirmware(deviceId: String, version: String)
 

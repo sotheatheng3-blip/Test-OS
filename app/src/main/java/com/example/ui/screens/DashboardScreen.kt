@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -41,9 +42,13 @@ fun DashboardScreen(
     val savedDevices by viewModel.savedDevices.collectAsState()
     val globalLogs by viewModel.globalLogs.collectAsState()
     val activeDevice by viewModel.activeDevice.collectAsState()
+    val realActiveDevice = activeDevice?.let { a -> savedDevices.find { it.id == a.id } }
     val connectionState by viewModel.connectionState.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedTypeFilter by remember { mutableStateOf("All") } // "All", "Bluetooth", "WiFi"
+    var selectedStatusFilter by remember { mutableStateOf("All") } // "All", "Connected", "Disconnected"
 
     LazyColumn(
         modifier = modifier
@@ -321,16 +326,16 @@ fun DashboardScreen(
                                 )
                             )
                             Text(
-                                text = if (activeDevice != null) "84%" else "--",
+                                text = if (realActiveDevice != null) "${realActiveDevice.batteryLevel}%" else "--",
                                 style = MaterialTheme.typography.headlineMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     color = BentoTextDark
                                 )
                             )
                             Text(
-                                text = if (activeDevice != null) "Healthy" else "Unavailable",
+                                text = if (realActiveDevice != null) realActiveDevice.operationalMode else "Unavailable",
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    color = if (activeDevice != null) BentoGreenText else BentoTextSecondary,
+                                    color = if (realActiveDevice != null) BentoGreenText else BentoTextSecondary,
                                     fontWeight = FontWeight.Bold
                                 )
                             )
@@ -372,14 +377,14 @@ fun DashboardScreen(
                                 )
                             )
                             Text(
-                                text = if (activeDevice != null) "12 ms" else "--",
+                                text = if (realActiveDevice != null) "${((-realActiveDevice.signalStrength) / 4)} ms" else "--",
                                 style = MaterialTheme.typography.headlineMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     color = BentoTextDark
                                 )
                             )
                             Text(
-                                text = if (activeDevice != null) "-64 dBm" else "Offline",
+                                text = if (realActiveDevice != null) "${realActiveDevice.signalStrength} dBm" else "Offline",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     color = BentoTextSecondary,
                                     fontWeight = FontWeight.Bold
@@ -393,33 +398,238 @@ fun DashboardScreen(
 
         // Section header for Catalog Nodes
         item {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "HARDWARE CATALOG",
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        color = BentoTextSecondary,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
+            Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "REACTIVE CONNECTION HUB",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            color = BentoTextSecondary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
                     )
-                )
-                Text(
-                    text = "${savedDevices.size} Controllers",
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        color = BentoTextSecondary,
-                        fontWeight = FontWeight.Bold
+                    Text(
+                        text = "${savedDevices.size} total registered",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = BentoTextSecondary,
+                            fontWeight = FontWeight.Bold
+                        )
                     )
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Advanced Search Bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = {
+                        Text(
+                            text = "Search by name, category, or address...",
+                            style = MaterialTheme.typography.bodyMedium.copy(color = BentoTextSecondary)
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search devices",
+                            tint = BentoPurpleAccent
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear search",
+                                    tint = BentoTextSecondary
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(BentoWhiteSurface),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = BentoPurpleAccent,
+                        unfocusedBorderColor = BentoBorder,
+                        focusedContainerColor = BentoWhiteSurface,
+                        unfocusedContainerColor = BentoWhiteSurface
+                    ),
+                    shape = RoundedCornerShape(16.dp)
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Advanced Controls Container (Bento style)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(BentoGreySurface)
+                        .border(1.dp, BentoBorder.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Filter Type Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Type:",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = BentoTextSecondary
+                            ),
+                            modifier = Modifier.width(60.dp)
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            val types = listOf("All", "Bluetooth", "WiFi")
+                            types.forEach { type ->
+                                val isSelected = selectedTypeFilter == type
+                                val count = when (type) {
+                                    "All" -> savedDevices.size
+                                    "Bluetooth" -> savedDevices.count { it.type == "Bluetooth" }
+                                    "WiFi" -> savedDevices.count { it.type == "WiFi" }
+                                    else -> 0
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) BentoPurpleBg else Color.Transparent)
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) BentoPurpleAccent else BentoBorder,
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable { selectedTypeFilter = type }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = type,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) BentoTextDeep else BentoTextSecondary
+                                            )
+                                        )
+                                        Text(
+                                            text = "($count)",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Normal,
+                                            color = if (isSelected) BentoPurpleAccent else BentoTextSecondary.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Filter Status Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = "Status:",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = BentoTextSecondary
+                            ),
+                            modifier = Modifier.width(60.dp)
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            val statuses = listOf("All", "Connected", "Disconnected")
+                            statuses.forEach { status ->
+                                val isSelected = selectedStatusFilter == status
+                                val count = when (status) {
+                                    "All" -> savedDevices.size
+                                    "Connected" -> savedDevices.count { it.status == "Connected" }
+                                    "Disconnected" -> savedDevices.count { it.status != "Connected" }
+                                    else -> 0
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) BentoPurpleBg else Color.Transparent)
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) BentoPurpleAccent else BentoBorder,
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable { selectedStatusFilter = status }
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = status,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) BentoTextDeep else BentoTextSecondary
+                                            )
+                                        )
+                                        Text(
+                                            text = "($count)",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Normal,
+                                            color = if (isSelected) BentoPurpleAccent else BentoTextSecondary.copy(alpha = 0.7f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        // List of Saved catalog controllers
-        if (savedDevices.isEmpty()) {
+        // List of Saved catalog controllers (dynamically filtered)
+        val filteredDevices = savedDevices.filter { device ->
+            val matchesSearch = searchQuery.isBlank() || 
+                device.name.contains(searchQuery, ignoreCase = true) ||
+                device.address.contains(searchQuery, ignoreCase = true) ||
+                device.id.contains(searchQuery, ignoreCase = true) ||
+                device.category.contains(searchQuery, ignoreCase = true)
+            
+            val matchesType = when (selectedTypeFilter) {
+                "All" -> true
+                "Bluetooth" -> device.type == "Bluetooth"
+                "WiFi" -> device.type == "WiFi"
+                else -> true
+            }
+
+            val matchesStatus = when (selectedStatusFilter) {
+                "All" -> true
+                "Connected" -> device.status == "Connected"
+                "Disconnected" -> device.status != "Connected"
+                else -> true
+            }
+
+            matchesSearch && matchesType && matchesStatus
+        }
+
+        if (filteredDevices.isEmpty()) {
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -430,46 +640,75 @@ fun DashboardScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(32.dp),
+                            .padding(28.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(
-                                imageVector = Icons.Default.DeveloperBoard,
+                                imageVector = if (searchQuery.isNotEmpty()) {
+                                    Icons.Default.SearchOff
+                                } else {
+                                    when {
+                                        selectedTypeFilter == "Bluetooth" -> Icons.Default.Bluetooth
+                                        selectedTypeFilter == "WiFi" -> Icons.Default.Wifi
+                                        else -> Icons.Default.DeveloperBoard
+                                    }
+                                },
                                 contentDescription = null,
-                                tint = BentoTextSecondary.copy(alpha = 0.5f),
-                                modifier = Modifier.size(44.dp)
+                                tint = BentoTextSecondary.copy(alpha = 0.4f),
+                                modifier = Modifier.size(38.dp)
                             )
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Text(
-                                text = "Catalog is Empty",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    color = BentoTextDark,
-                                    fontWeight = FontWeight.Bold
+                                text = if (searchQuery.isNotEmpty()) {
+                                    "No Match Found"
+                                } else {
+                                    when {
+                                        selectedStatusFilter == "Connected" -> "No Active Connections"
+                                        selectedTypeFilter == "Bluetooth" -> "No Bluetooth Controllers"
+                                        selectedTypeFilter == "WiFi" -> "No Wi-Fi AP Controllers"
+                                        else -> "Catalog is Empty"
+                                    }
+                                },
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                        color = BentoTextDark,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 )
-                            )
-                            Text(
-                                text = "Scan to register active boards nearby.",
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = if (searchQuery.isNotEmpty()) {
+                                        "No registered controller nodes match your search queries. Try modifying your parameters."
+                                    } else {
+                                        when {
+                                            selectedStatusFilter == "Connected" -> "None of your cataloged microcontrollers are actively linked."
+                                            selectedTypeFilter == "Bluetooth" -> "Register or pair a Bluetooth BLE developer board from the scanner panel to start telemetry."
+                                            selectedTypeFilter == "WiFi" -> "Enroll target wireless station endpoints configured on local router nets."
+                                            else -> "Initiate telemetry scan and pair nodes nearby."
+                                        }
+                                    },
                                 style = MaterialTheme.typography.bodySmall.copy(color = BentoTextSecondary),
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 8.dp)
                             )
                         }
                     }
                 }
             }
         } else {
-            items(savedDevices, key = { it.id }) { device ->
-                val isSelected = activeDevice?.id == device.id
+            items(filteredDevices, key = { it.id }) { device ->
+                val connectionStatus = when {
+                    device.status == "Connected" -> "Connected"
+                    activeDevice?.id == device.id && connectionState == "Connecting" -> "Connecting"
+                    else -> "Disconnected"
+                }
+                
                 DeviceCatalogCard(
                     device = device,
-                    isConnected = isSelected && connectionState == "Connected",
-                    onClick = {
-                        if (isSelected && connectionState == "Connected") {
-                            onNavigateToControl()
-                        } else {
-                            viewModel.connectToDevice(device)
-                        }
-                    },
+                    connectionStatus = connectionStatus,
+                    onConnect = { viewModel.connectToDevice(device) },
+                    onDisconnect = { viewModel.disconnectDevice(device.id) },
+                    onNavigate = { onNavigateToControl() },
                     onDelete = { viewModel.deleteSavedDevice(device) }
                 )
             }
@@ -622,16 +861,36 @@ fun DashboardScreen(
 @Composable
 fun DeviceCatalogCard(
     device: DeviceEntity,
-    isConnected: Boolean,
-    onClick: () -> Unit,
+    connectionStatus: String, // "Connected", "Connecting", "Disconnected"
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onNavigate: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val isConnected = connectionStatus == "Connected"
+    val isConnecting = connectionStatus == "Connecting"
+    
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = BentoWhiteSurface),
-        border = BorderStroke(1.dp, if (isConnected) BentoPurpleAccent.copy(alpha = 0.5f) else BentoBorder),
+            .clickable { 
+                if (isConnected) {
+                    onNavigate()
+                } else if (!isConnecting) {
+                    onConnect()
+                }
+            },
+        colors = CardDefaults.cardColors(
+            containerColor = if (isConnected) BentoPurpleBg else BentoWhiteSurface
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = when {
+                isConnected -> BentoPurpleAccent.copy(alpha = 0.5f)
+                isConnecting -> BentoPurpleAccent.copy(alpha = 0.3f)
+                else -> BentoBorder
+            }
+        ),
         shape = RoundedCornerShape(20.dp)
     ) {
         Row(
@@ -640,15 +899,18 @@ fun DeviceCatalogCard(
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Circle Type Icon with pastel background according to type
+            // Circle Type Icon with dynamic tint matching status
             Box(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
                     .background(
-                        if (isConnected) BentoPurpleBg
-                        else if (device.type == "Bluetooth") BentoBlueContainer
-                        else BentoPinkContainer
+                        when {
+                            isConnected -> BentoPurpleAccent.copy(alpha = 0.15f)
+                            isConnecting -> BentoPurpleAccent.copy(alpha = 0.10f)
+                            device.type == "Bluetooth" -> BentoBlueContainer
+                            else -> BentoPinkContainer
+                        }
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -673,40 +935,136 @@ fun DeviceCatalogCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 2.dp, bottom = 2.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when {
+                                    isConnected -> BentoGreenText
+                                    isConnecting -> BentoAmberText
+                                    else -> BentoTextSecondary.copy(alpha = 0.5f)
+                                }
+                            )
+                    )
+                    Text(
+                        text = connectionStatus,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = when {
+                                isConnected -> BentoGreenText
+                                isConnecting -> BentoAmberText
+                                else -> BentoTextSecondary.copy(alpha = 0.8f)
+                            },
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp
+                        )
+                    )
+                }
+
                 Text(
-                    text = "${device.category} • ${device.address}",
+                    text = when {
+                        isConnected -> "Battery: ${device.batteryLevel}% • Signal: ${device.signalStrength} dBm\nMode: ${device.operationalMode}"
+                        isConnecting -> "Establishing encrypted sync..."
+                        else -> "${device.category} • ${device.address}"
+                    },
                     style = MaterialTheme.typography.bodySmall.copy(
-                        color = BentoTextSecondary,
-                        fontWeight = FontWeight.Medium
+                        color = if (isConnected) BentoPurpleAccent else BentoTextSecondary,
+                        fontWeight = FontWeight.Bold
                     )
                 )
             }
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Connected or delete icon
-            if (isConnected) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(BentoGreenText)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Active",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = BentoGreenText,
-                    fontWeight = FontWeight.Black
-                )
-            } else {
-                IconButton(onClick = onDelete) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete device profile",
-                        tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                        modifier = Modifier.size(18.dp)
-                    )
+            // Connected, Connecting, or Disconnected actions
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                when {
+                    isConnected -> {
+                        // Disconnect action
+                        Button(
+                            onClick = onDisconnect,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.White),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, BentoBorder)
+                        ) {
+                            Text(
+                                text = "Disconnect",
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        // Active Navigator
+                        IconButton(onClick = onNavigate) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowForward,
+                                contentDescription = "Active controller controls",
+                                tint = BentoPurpleAccent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    isConnecting -> {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(BentoPurpleBg)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(12.dp),
+                                strokeWidth = 1.5.dp,
+                                color = BentoPurpleAccent
+                            )
+                            Text(
+                                text = "Syncing",
+                                color = BentoPurpleAccent,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                    else -> {
+                        // Connect Text Button
+                        Button(
+                            onClick = onConnect,
+                            colors = ButtonDefaults.buttonColors(containerColor = BentoPurpleAccent),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(30.dp),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                text = "Link",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                        
+                        // Delete Button
+                        IconButton(onClick = onDelete) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete device profile",
+                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                 }
             }
         }

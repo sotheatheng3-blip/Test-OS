@@ -54,6 +54,8 @@ fun ControllerScreen(
 
     // Tracking the temperature values for historical micro graph (telemetry tracker)
     val tempHistory = remember { mutableStateListOf<Float>() }
+    var showEsimProvisionDialog by remember { mutableStateOf(false) }
+
     LaunchedEffect(telemetry.temperature) {
         if (activeDevice != null) {
             tempHistory.add(telemetry.temperature)
@@ -308,26 +310,52 @@ fun ControllerScreen(
 
             // Power Metrics Info Row
             item {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    PowerStatBlock(
-                        title = "Input voltage",
-                        value = "${telemetry.inputVoltage} V",
-                        icon = Icons.Default.Bolt,
-                        color = BentoAmberText,
-                        badgeBg = BentoAmberContainer,
-                        modifier = Modifier.weight(1f)
-                    )
-                    PowerStatBlock(
-                        title = "SRAM Memory",
-                        value = "${telemetry.sramUsage}/128K",
-                        icon = Icons.Default.Memory,
-                        color = BentoTextDeep,
-                        badgeBg = BentoBlueContainer,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        PowerStatBlock(
+                            title = "Input voltage",
+                            value = "${telemetry.inputVoltage} V",
+                            icon = Icons.Default.Bolt,
+                            color = BentoAmberText,
+                            badgeBg = BentoAmberContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        PowerStatBlock(
+                            title = "SRAM Memory",
+                            value = "${telemetry.sramUsage}/128K",
+                            icon = Icons.Default.Memory,
+                            color = BentoPurpleAccent,
+                            badgeBg = BentoPurpleBg,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        PowerStatBlock(
+                            title = "SSD Storage",
+                            value = "${telemetry.storageUsedGb}G / ${telemetry.storageTotalGb}G",
+                            icon = Icons.Default.Storage,
+                            color = Color(0xFF00B8D4),
+                            badgeBg = Color(0xFFE0F2F1),
+                            modifier = Modifier.weight(1f)
+                        )
+                        PowerStatBlock(
+                            title = "System RAM",
+                            value = "${telemetry.ramUsedGb}G / ${telemetry.ramTotalGb}G",
+                            icon = Icons.Default.Dns,
+                            color = BentoTextDeep,
+                            badgeBg = BentoBlueContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
 
@@ -546,6 +574,500 @@ fun ControllerScreen(
                 }
             }
 
+            // HARDWARE PROVISIONING & STORAGE/RAM ALLOCATION
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = BentoWhiteSurface),
+                    border = BorderStroke(1.dp, BentoBorder),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFFE0F7FA)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeveloperBoard,
+                                        contentDescription = null,
+                                        tint = Color(0xFF00B8D4),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "Hardware Profile Provisioning",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = BentoTextDark,
+                                        fontSize = 15.sp
+                                    )
+                                    Text(
+                                        text = "Calibrate active memory allocation sectors",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = BentoTextSecondary,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(color = BentoBorder.copy(alpha = 0.5f))
+
+                        // Dynamic Sector Visualizer Canvas
+                        HardwarePartitionVisualizer(
+                            storageTotal = telemetry.storageTotalGb,
+                            storageUsed = telemetry.storageUsedGb,
+                            ramTotal = telemetry.ramTotalGb,
+                            ramUsed = telemetry.ramUsedGb,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        HorizontalDivider(color = BentoBorder.copy(alpha = 0.5f))
+
+                        // 1. Storage provisioning slider
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Provision Active Cold Storage",
+                                    fontWeight = FontWeight.Bold,
+                                    color = BentoTextDark,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "${telemetry.storageTotalGb} GB (Max 128G)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color(0xFF00B8D4)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Slider(
+                                value = telemetry.storageTotalGb.toFloat(),
+                                onValueChange = { viewModel.setStorageTotalGb(it.toInt()) },
+                                valueRange = 32f..128f,
+                                steps = 3, // 32, 64, 96, 128
+                                colors = SliderDefaults.colors(
+                                    thumbColor = Color(0xFF00B8D4),
+                                    activeTrackColor = Color(0xFF00B8D4),
+                                    inactiveTrackColor = BentoGreySurface
+                                )
+                            )
+                        }
+
+                        // 2. RAM capacity configuration slider
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Allocate System RAM Buffer",
+                                    fontWeight = FontWeight.Bold,
+                                    color = BentoTextDark,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "${telemetry.ramTotalGb} GB (Max 16G)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = BentoPurpleAccent
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Slider(
+                                value = telemetry.ramTotalGb.toFloat(),
+                                onValueChange = { viewModel.setRamTotalGb(it.toInt()) },
+                                valueRange = 2f..16f,
+                                steps = 6, // 2, 4, 6, 8, 10, 12, 14, 16
+                                colors = SliderDefaults.colors(
+                                    thumbColor = BentoPurpleAccent,
+                                    activeTrackColor = BentoPurpleAccent,
+                                    inactiveTrackColor = BentoGreySurface
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            // eSIM CELLULAR PROVISIONING SECTION
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = BentoWhiteSurface),
+                    border = BorderStroke(1.dp, BentoBorder),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFFE8F5E9)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CellTower,
+                                        contentDescription = null,
+                                        tint = Color(0xFF2E7D32),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "eSIM Cellular Profile Manager",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = BentoTextDark,
+                                        fontSize = 15.sp
+                                    )
+                                    Text(
+                                        text = "Over-The-Air cellular carrier subscription settings",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = BentoTextSecondary,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            
+                            // eSIM Toggle Switch
+                            Switch(
+                                checked = telemetry.eSimEnabled,
+                                onCheckedChange = { viewModel.toggleESim(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = Color(0xFF2E7D32),
+                                    uncheckedThumbColor = BentoTextSecondary,
+                                    uncheckedTrackColor = BentoGreySurface
+                                )
+                            )
+                        }
+
+                        HorizontalDivider(color = BentoBorder.copy(alpha = 0.5f))
+
+                        if (telemetry.eSimEnabled) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // Real-time connection sub-state panel
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(BentoGreySurface)
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = "TRANSCEIVER STATUS",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = BentoTextSecondary
+                                        )
+                                        Text(
+                                            text = telemetry.eSimStatus.uppercase(),
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = when(telemetry.eSimStatus) {
+                                                "Connected" -> Color(0xFF2E7D32)
+                                                "Provisioning" -> BentoPurpleAccent
+                                                "Connecting" -> Color(0xFF0288D1)
+                                                else -> BentoTextDark
+                                            },
+                                            fontSize = 13.sp
+                                        )
+                                    }
+
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = "CARRIER NETWORK",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Black,
+                                            color = BentoTextSecondary
+                                        )
+                                        Text(
+                                            text = if (telemetry.eSimIccid.isEmpty()) "UNPROVISIONED" else telemetry.eSimCarrier,
+                                            fontWeight = FontWeight.Bold,
+                                            color = BentoTextDark,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                }
+
+                                if (telemetry.eSimStatus == "Connected" || telemetry.eSimStatus == "Connecting" || telemetry.eSimStatus == "Provisioning") {
+                                    // Visual Live Signal Indicator Bar
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .background(Color(0xFF13131A))
+                                            .border(1.dp, BentoBorder.copy(alpha = 0.3f))
+                                            .padding(14.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Signal bars Canvas
+                                        Box(
+                                            modifier = Modifier.size(50.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                                val barCount = 5
+                                                val space = 3.dp.toPx()
+                                                val totalWidth = size.width
+                                                val barWidth = (totalWidth - (barCount - 1) * space) / barCount
+                                                
+                                                // Map signal dBm to visible bars
+                                                val activeBars = when {
+                                                    telemetry.eSimSignalStrength > -75 -> 5
+                                                    telemetry.eSimSignalStrength > -85 -> 4
+                                                    telemetry.eSimSignalStrength > -95 -> 3
+                                                    telemetry.eSimSignalStrength > -105 -> 2
+                                                    telemetry.eSimSignalStrength > -115 -> 1
+                                                    else -> 0
+                                                }
+                                                
+                                                for (i in 0 until barCount) {
+                                                    val fraction = (i + 1).toFloat() / barCount
+                                                    val barHeight = size.height * fraction
+                                                    val x = i * (barWidth + space)
+                                                    val y = size.height - barHeight
+                                                    
+                                                    drawRect(
+                                                        color = if (i < activeBars) Color(0xFF4CAF50) else Color.White.copy(alpha = 0.15f),
+                                                        topLeft = Offset(x, y),
+                                                        size = Size(barWidth, barHeight)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "CELL NETWORK SIGNAL",
+                                                    color = Color.White.copy(alpha = 0.6f),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                val description = when {
+                                                    telemetry.eSimSignalStrength > -80 -> "Excellent"
+                                                    telemetry.eSimSignalStrength > -90 -> "Good"
+                                                    telemetry.eSimSignalStrength > -100 -> "Fair"
+                                                    telemetry.eSimSignalStrength > -110 -> "Weak"
+                                                    else -> "Searching..."
+                                                }
+                                                Text(
+                                                    text = description.uppercase(),
+                                                    color = if (telemetry.eSimSignalStrength > -90) Color(0xFF4CAF50) else Color(0xFFFFB300),
+                                                    fontSize = 9.sp,
+                                                    fontWeight = FontWeight.Black
+                                                )
+                                            }
+                                            Text(
+                                                text = if (telemetry.eSimStatus == "Connected") "${telemetry.eSimSignalStrength} dBm" else "CALIBRATING...",
+                                                color = Color.White,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 14.sp,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = "Active Band: 5G NR n78 (Sub-6 GHz DL)",
+                                                color = Color.White.copy(alpha = 0.4f),
+                                                fontSize = 9.sp
+                                            )
+                                        }
+                                    }
+
+                                    // ICCID and Cellular Quota Metrics Card
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Card(
+                                            modifier = Modifier.weight(1f),
+                                            colors = CardDefaults.cardColors(containerColor = BentoGreySurface),
+                                            shape = RoundedCornerShape(16.dp),
+                                            border = BorderStroke(1.dp, BentoBorder.copy(alpha = 0.5f))
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text(
+                                                    text = "ICCID REGISTER",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = BentoTextSecondary
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = if (telemetry.eSimIccid.isEmpty()) "ID: NONE LOADED" else telemetry.eSimIccid.chunked(4).joinToString(" "),
+                                                    fontSize = 10.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = BentoTextDark,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = "Secure eUICC Profile Active",
+                                                    fontSize = 8.sp,
+                                                    color = Color(0xFF2E7D32),
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+
+                                        Card(
+                                            modifier = Modifier.weight(1f),
+                                            colors = CardDefaults.cardColors(containerColor = BentoGreySurface),
+                                            shape = RoundedCornerShape(16.dp),
+                                            border = BorderStroke(1.dp, BentoBorder.copy(alpha = 0.5f))
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text(
+                                                    text = "LIVE CELLULAR DATA",
+                                                    fontSize = 8.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = BentoTextSecondary
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(
+                                                    text = "${telemetry.eSimDataUsedMb} MB",
+                                                    fontSize = 13.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = BentoTextDeep
+                                                )
+                                                Spacer(modifier = Modifier.height(1.dp))
+                                                Text(
+                                                    text = "Quota: 5000.0 MB Limit",
+                                                    fontSize = 8.sp,
+                                                    color = BentoTextSecondary
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // Provision/Replace eSIM profile button
+                                    Button(
+                                        onClick = { showEsimProvisionDialog = true },
+                                        colors = ButtonDefaults.buttonColors(containerColor = BentoPurpleAccent),
+                                        modifier = Modifier.weight(1.5f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        contentPadding = PaddingValues(vertical = 8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCode,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (telemetry.eSimIccid.isEmpty()) "Provision eSIM Profile" else "Replace eSIM Profile",
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+
+                                    // Run diagnostic speed test button
+                                    if (telemetry.eSimStatus == "Connected") {
+                                        Button(
+                                            onClick = { viewModel.runSimulatedSpeedTest() },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp),
+                                            contentPadding = PaddingValues(vertical = 8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Speed,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Speed Test",
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Offline notice
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SettingsCell,
+                                    contentDescription = null,
+                                    tint = BentoTextSecondary.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Transceiver power down. Toggle eSIM switch to attach cellular link.",
+                                    color = BentoTextSecondary,
+                                    fontSize = 11.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Digital Controllers & Custom GPIO Pins toggles
             item {
                 Card(
@@ -709,6 +1231,168 @@ fun ControllerScreen(
                 }
             }
         }
+    }
+
+    if (showEsimProvisionDialog) {
+        var carrierInput by remember { mutableStateOf("T-Mobile IoT") }
+        var codeInput by remember { mutableStateOf("LPA:1\$rsp.global-esim.com\$IQ_7392_E2") }
+        var isSimulatingScan by remember { mutableStateOf(false) }
+        var scanProgress by remember { mutableStateOf(0f) }
+        
+        // Simulating QR code scanning overlay
+        LaunchedEffect(isSimulatingScan) {
+            if (isSimulatingScan) {
+                scanProgress = 0f
+                while (scanProgress < 1f) {
+                    delay(150)
+                    scanProgress += 0.1f
+                }
+                isSimulatingScan = false
+                // Auto fill premium details
+                carrierInput = listOf("T-Mobile IoT", "Orange IoT", "Truphone eSIM", "Verizon IoT").random()
+                val hexToken = (1000..9999).random()
+                codeInput = "LPA:1\$rsp.iota-carrier.com\$PROV_${hexToken}_SECURE"
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { if (!isSimulatingScan) showEsimProvisionDialog = false },
+            containerColor = BentoWhiteSurface,
+            shape = RoundedCornerShape(24.dp),
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.QrCode,
+                        contentDescription = null,
+                        tint = BentoPurpleAccent
+                    )
+                    Text(
+                        text = "Remote SIM Provisioning",
+                        color = BentoTextDark,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(
+                        text = "Configure over-the-air subscription profile using GSMA SM-DP+ (Subscription Manager Data Preparation) network configurations.",
+                        color = BentoTextSecondary,
+                        fontSize = 11.sp
+                    )
+                    
+                    if (isSimulatingScan) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(BentoGreySurface, RoundedCornerShape(12.dp))
+                                .padding(16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = "SIMULATING CAMERA QR DISCOVERY",
+                                fontWeight = FontWeight.Bold,
+                                color = BentoPurpleAccent,
+                                fontSize = 10.sp,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            LinearProgressIndicator(
+                                progress = { scanProgress },
+                                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                color = BentoPurpleAccent,
+                                trackColor = BentoPurpleBg
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Decoding RSP payload: ${(scanProgress * 100).toInt()}%",
+                                fontSize = 10.sp,
+                                color = BentoTextSecondary
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            // Carrier select dropdown or text
+                            OutlinedTextField(
+                                value = carrierInput,
+                                onValueChange = { carrierInput = it },
+                                label = { Text("Selected Carrier Network") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = BentoPurpleAccent,
+                                    focusedLabelColor = BentoPurpleAccent,
+                                    unfocusedBorderColor = BentoBorder,
+                                    unfocusedLabelColor = BentoTextSecondary
+                                )
+                            )
+
+                            OutlinedTextField(
+                                value = codeInput,
+                                onValueChange = { codeInput = it },
+                                label = { Text("SM-DP+ Activation Code") },
+                                placeholder = { Text("e.g. LPA:1\$rsp.carrier.com\$code") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = BentoPurpleAccent,
+                                    focusedLabelColor = BentoPurpleAccent,
+                                    unfocusedBorderColor = BentoBorder,
+                                    unfocusedLabelColor = BentoTextSecondary
+                                )
+                            )
+
+                            Button(
+                                onClick = { isSimulatingScan = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = BentoGreySurface),
+                                shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(vertical = 10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.QrCode,
+                                    contentDescription = null,
+                                    tint = BentoTextDark
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Scan Simulated Carrier QR Code",
+                                    color = BentoTextDark,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.provisionESimProfile(codeInput, carrierInput)
+                        showEsimProvisionDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BentoPurpleAccent),
+                    enabled = !isSimulatingScan && carrierInput.isNotBlank() && codeInput.isNotBlank(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Provision Profile", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showEsimProvisionDialog = false },
+                    enabled = !isSimulatingScan
+                ) {
+                    Text("Cancel", color = BentoTextSecondary, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
     }
 }
 
@@ -1026,5 +1710,216 @@ fun InteractiveSpeedVisualizer(
             ),
             textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+fun HardwarePartitionVisualizer(
+    storageTotal: Int,
+    storageUsed: Float,
+    ramTotal: Int,
+    ramUsed: Float,
+    modifier: Modifier = Modifier
+) {
+    // We animate values over changes
+    val animatedStorageUsed by animateFloatAsState(targetValue = storageUsed, label = "storage_used")
+    val animatedRamUsed by animateFloatAsState(targetValue = ramUsed, label = "ram_used")
+    
+    // Pulse animation for simulated reading/writing or cache sync activity
+    val infiniteTransition = rememberInfiniteTransition(label = "sector_pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 0.9f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+
+    val rotateAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(4000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotate"
+    )
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF13131A))
+            .border(1.dp, BentoBorder.copy(alpha = 0.5f))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "REAL-TIME SECTOR MAP & PARTITIONS",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.6f),
+                    letterSpacing = 1.sp
+                )
+            )
+            Box(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(BentoPurpleAccent.copy(alpha = 0.2f))
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "STATUS: ACTIVE SYNC",
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = BentoPurpleAccent
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(130.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val center = Offset(size.width / 2, size.height / 2)
+                val outerRadius = size.height / 2 - 12.dp.toPx()
+                val innerRadius = outerRadius - 16.dp.toPx()
+                
+                // Draw sector segments for RAM
+                val ramRatio = (animatedRamUsed / ramTotal.toFloat()).coerceIn(0f, 1f)
+                val activeRamSweep = ramRatio * 180f
+                
+                // RAM Half-Circle (top half: 180 to 360 degrees)
+                // Draw background track for RAM
+                drawArc(
+                    color = Color.White.copy(alpha = 0.05f),
+                    startAngle = 180f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(center.x - outerRadius, center.y - outerRadius),
+                    size = Size(outerRadius * 2, outerRadius * 2),
+                    style = Stroke(width = 10.dp.toPx())
+                )
+                // Draw active RAM
+                drawArc(
+                    color = BentoPurpleAccent,
+                    startAngle = 180f,
+                    sweepAngle = activeRamSweep,
+                    useCenter = false,
+                    topLeft = Offset(center.x - outerRadius, center.y - outerRadius),
+                    size = Size(outerRadius * 2, outerRadius * 2),
+                    style = Stroke(width = 10.dp.toPx())
+                )
+
+                // Draw sector segments for Storage (bottom half: 0 to 180 degrees)
+                val storageRatio = (animatedStorageUsed / storageTotal.toFloat()).coerceIn(0f, 1f)
+                val activeStorageSweep = storageRatio * 180f
+
+                // Storage background track
+                drawArc(
+                    color = Color.White.copy(alpha = 0.05f),
+                    startAngle = 0f,
+                    sweepAngle = 180f,
+                    useCenter = false,
+                    topLeft = Offset(center.x - outerRadius, center.y - outerRadius),
+                    size = Size(outerRadius * 2, outerRadius * 2),
+                    style = Stroke(width = 10.dp.toPx())
+                )
+                // Draw active Storage
+                drawArc(
+                    color = Color(0xFF00E5FF),
+                    startAngle = 0f,
+                    sweepAngle = activeStorageSweep,
+                    useCenter = false,
+                    topLeft = Offset(center.x - outerRadius, center.y - outerRadius),
+                    size = Size(outerRadius * 2, outerRadius * 2),
+                    style = Stroke(width = 10.dp.toPx())
+                )
+
+                // Draw central rotating sync indicator & core stats
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.02f),
+                    radius = innerRadius - 4.dp.toPx(),
+                    center = center
+                )
+
+                // Dynamic radar scanning vectors of partitions
+                val angleRad = Math.toRadians(rotateAngle.toDouble())
+                val rayX = center.x + innerRadius * cos(angleRad).toFloat()
+                val rayY = center.y + innerRadius * sin(angleRad).toFloat()
+                drawLine(
+                    color = Color.White.copy(alpha = pulseAlpha * 0.25f),
+                    start = center,
+                    end = Offset(rayX, rayY),
+                    strokeWidth = 1.5.dp.toPx()
+                )
+            }
+
+            // Text specs center aligned
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "MEM ALLOC",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "${String.format("%.1f", animatedRamUsed)}G / ${ramTotal}G",
+                    color = BentoPurpleAccent,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Black
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "STORAGE MAP",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "${String.format("%.1f", animatedStorageUsed)}G / ${storageTotal}G",
+                    color = Color(0xFF00E5FF),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Black
+                )
+            }
+        }
+
+        // Legends
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(BentoPurpleAccent))
+                Text("RAM (Max 16G)", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF00E5FF)))
+                Text("Storage (Max 128G)", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
     }
 }
