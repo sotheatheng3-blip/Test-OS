@@ -1,14 +1,18 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.items as lazyItems
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.DeviceEntity
 import com.example.data.model.LogEntity
+import com.example.ui.components.SecureConnectionDialog
 import com.example.ui.DeviceViewModel
 import com.example.ui.theme.*
 import java.text.SimpleDateFormat
@@ -47,19 +52,22 @@ fun DashboardScreen(
 
     var showAddDialog by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var deviceToAuthenticate by remember { mutableStateOf<DeviceEntity?>(null) }
     var selectedTypeFilter by remember { mutableStateOf("All") } // "All", "Bluetooth", "WiFi"
     var selectedStatusFilter by remember { mutableStateOf("All") } // "All", "Connected", "Disconnected"
 
-    LazyColumn(
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 340.dp),
         modifier = modifier
             .fillMaxSize()
             .background(BentoBg)
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
         contentPadding = PaddingValues(top = 16.dp, bottom = 80.dp)
     ) {
         // Bento Page Header
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -104,7 +112,7 @@ fun DashboardScreen(
         }
 
         // Bento Grid: Active Hero Cell
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             AnimatedContent(
                 targetState = activeDevice,
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
@@ -287,7 +295,7 @@ fun DashboardScreen(
         }
 
         // Bento Grid: Double Sub-Cells Row (Battery & Latency indices)
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -396,8 +404,18 @@ fun DashboardScreen(
             }
         }
 
+        // Bento Grid: Connected Devices & Health Metrics Panel
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            ConnectedDevicesHealthPanel(
+                connectedDevices = savedDevices.filter { it.status == "Connected" },
+                onDisconnect = { device -> viewModel.disconnectDevice(device.id) },
+                onNavigate = onNavigateToControl,
+                onNavigateToScan = onNavigateToScan
+            )
+        }
+
         // Section header for Catalog Nodes
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -630,7 +648,7 @@ fun DashboardScreen(
         }
 
         if (filteredDevices.isEmpty()) {
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = BentoGreySurface),
@@ -706,7 +724,7 @@ fun DashboardScreen(
                 DeviceCatalogCard(
                     device = device,
                     connectionStatus = connectionStatus,
-                    onConnect = { viewModel.connectToDevice(device) },
+                    onConnect = { deviceToAuthenticate = device },
                     onDisconnect = { viewModel.disconnectDevice(device.id) },
                     onNavigate = { onNavigateToControl() },
                     onDelete = { viewModel.deleteSavedDevice(device) }
@@ -715,7 +733,7 @@ fun DashboardScreen(
         }
 
         // System Logs Header
-        item {
+        item(span = { GridItemSpan(maxLineSpan) }) {
             Text(
                 text = "GLOBAL AUDIT LOGS",
                 style = MaterialTheme.typography.labelLarge.copy(
@@ -728,7 +746,7 @@ fun DashboardScreen(
 
         // Global System logs list
         if (globalLogs.isEmpty()) {
-            item {
+            item(span = { GridItemSpan(maxLineSpan) }) {
                 Text(
                     text = "No audit transactions recorded yet.",
                     style = MaterialTheme.typography.bodySmall.copy(color = BentoTextSecondary),
@@ -736,10 +754,31 @@ fun DashboardScreen(
                 )
             }
         } else {
-            items(globalLogs.take(5)) { logObj ->
+            items(globalLogs.take(5), span = { GridItemSpan(maxLineSpan) }) { logObj ->
                 LogItemRow(logObj = logObj)
             }
         }
+    }
+
+    if (deviceToAuthenticate != null) {
+        SecureConnectionDialog(
+            device = deviceToAuthenticate,
+            onAuthenticateSuccess = { correctPin ->
+                val dev = deviceToAuthenticate
+                if (dev != null) {
+                    viewModel.connectToDevice(dev)
+                    viewModel.log(dev.id, "INFO", "Authentication PIN verified. Granting live telemetry stream execution.")
+                }
+                deviceToAuthenticate = null
+            },
+            onCancel = {
+                val dev = deviceToAuthenticate
+                if (dev != null) {
+                    viewModel.log(dev.id, "WARNING", "Decryption authorization cancelled by user.")
+                }
+                deviceToAuthenticate = null
+            }
+        )
     }
 
     // Modal Manual Input Dialog
@@ -819,7 +858,7 @@ fun DashboardScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         val categories = listOf("Smart Home", "Industrial", "Robotics", "iOS Companion")
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(categories) { cat ->
+                            lazyItems(categories) { cat ->
                                 val active = category == cat
                                 FilterChip(
                                     selected = active,
@@ -1146,3 +1185,497 @@ fun outlinedTextFieldColorsStyle() = OutlinedTextFieldDefaults.colors(
     focusedContainerColor = BentoWhiteSurface,
     unfocusedContainerColor = BentoWhiteSurface
 )
+
+@Composable
+fun ConnectedDevicesHealthPanel(
+    connectedDevices: List<DeviceEntity>,
+    onDisconnect: (DeviceEntity) -> Unit,
+    onNavigate: () -> Unit,
+    onNavigateToScan: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = BentoWhiteSurface),
+        border = BorderStroke(1.5.dp, BentoBorder),
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(BentoPurpleBg),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Sensors,
+                            contentDescription = null,
+                            tint = BentoPurpleAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "LIVE TELEMETRY MONITOR",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Black,
+                                color = BentoTextSecondary,
+                                letterSpacing = 1.sp
+                            )
+                        )
+                        Text(
+                            text = "Connected Status & Health Metrics",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = BentoTextDark
+                            )
+                        )
+                    }
+                }
+
+                if (connectedDevices.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(BentoGreenContainer)
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "${connectedDevices.size} Active",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = BentoGreenText,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (connectedDevices.isEmpty()) {
+                // Empty state card styled as a subtle Bento block
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(BentoGreySurface)
+                        .border(1.dp, BentoBorder.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .padding(20.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OfflineBolt,
+                            contentDescription = null,
+                            tint = BentoTextSecondary.copy(alpha = 0.4f),
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Text(
+                            text = "All Nodes Standby",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = BentoTextDark
+                            )
+                        )
+                        Text(
+                            text = "No real-time active links identified. Launch channel scan or register local hardware devices below.",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = BentoTextSecondary,
+                                textAlign = TextAlign.Center
+                            ),
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Button(
+                            onClick = onNavigateToScan,
+                            colors = ButtonDefaults.buttonColors(containerColor = BentoPurpleAccent),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Text(
+                                "Scan Channels",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            } else {
+                // List of connected devices with metrics details
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    connectedDevices.forEach { device ->
+                        ConnectedDeviceHealthItem(
+                            device = device,
+                            onDisconnect = { onDisconnect(device) },
+                            onNavigate = onNavigate
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ConnectedDeviceHealthItem(
+    device: DeviceEntity,
+    onDisconnect: () -> Unit,
+    onNavigate: () -> Unit
+) {
+    // Online pulse alpha animation
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = BentoGreySurface),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, BentoBorder.copy(alpha = 0.3f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // First row: Type + Name and Status badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Microcontroller avatar icon
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(if (device.type == "Bluetooth") BentoBlueContainer else BentoPinkContainer),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (device.type == "Bluetooth") Icons.Default.Bluetooth else Icons.Default.Wifi,
+                            contentDescription = device.type,
+                            tint = BentoTextDark,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    Column {
+                        Text(
+                            text = device.name,
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Black,
+                                color = BentoTextDark
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${device.category} • ${device.address}",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = BentoTextSecondary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+                }
+
+                // Blinking Pulse Link Status Pill badge
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(BentoGreenContainer)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(BentoGreenText.copy(alpha = pulseAlpha))
+                    )
+                    Text(
+                        text = "ACTIVE",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = BentoGreenText,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 8.sp
+                        )
+                    )
+                }
+            }
+
+            // Divider
+            HorizontalDivider(color = BentoBorder.copy(alpha = 0.5f), thickness = 1.dp)
+
+            // Second row: Detailed Health Gauges & Telemetry
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Latency gauge
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Text(
+                        text = "LATENCY",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = BentoTextSecondary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 8.sp,
+                            letterSpacing = 0.5.sp
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${((-device.signalStrength) / 4)} ms",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.ExtraBold,
+                            color = BentoTextDark
+                        )
+                    )
+                }
+
+                // Battery Gauge with Visual Pill icon
+                Column(
+                    modifier = Modifier.weight(1.2f),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Text(
+                        text = "BATTERY HEALTH",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = BentoTextSecondary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 8.sp,
+                            letterSpacing = 0.5.sp
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = if (device.batteryLevel >= 60) "🔋" else "⚠️",
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            text = "${device.batteryLevel}%",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (device.batteryLevel < 20) MaterialTheme.colorScheme.error else BentoTextDark
+                            )
+                        )
+                    }
+                }
+
+                // RSSI / Signal Strength Quality gauge
+                val rssi = device.signalStrength
+                val signalText = when {
+                    rssi >= -55 -> "EXCELLENT"
+                    rssi >= -70 -> "STABLE"
+                    else -> "WEAK"
+                }
+                val signalColor = when {
+                    rssi >= -55 -> BentoGreenText
+                    rssi >= -70 -> BentoAmberText
+                    else -> MaterialTheme.colorScheme.error
+                }
+
+                Column(
+                    modifier = Modifier.weight(1.2f),
+                    horizontalAlignment = Alignment.Start
+                ) {
+                    Text(
+                        text = "SENSORY LINK",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = BentoTextSecondary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 8.sp,
+                            letterSpacing = 0.5.sp
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        SignalStrengthBars(rssi)
+                        Text(
+                            text = signalText,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                color = signalColor,
+                                fontSize = 8.sp
+                            )
+                        )
+                    }
+                }
+            }
+
+            // Third row: Operational Mode + Management buttons
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Operational mode capsule
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(BentoPurpleBg)
+                        .border(1.dp, BentoPurpleAccent.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.OfflineBolt,
+                            contentDescription = null,
+                            tint = BentoPurpleAccent,
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Text(
+                            text = device.operationalMode.uppercase(Locale.getDefault()),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = BentoTextDeep,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 8.sp
+                            )
+                        )
+                    }
+                }
+
+                // Direct action row
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Disconnect text button with full touch targets
+                    TextButton(
+                        onClick = onDisconnect,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.LinkOff,
+                                contentDescription = null,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Text(
+                                text = "Disconnect",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+
+                    // Direct Stream control button
+                    Button(
+                        onClick = onNavigate,
+                        colors = ButtonDefaults.buttonColors(containerColor = BentoPurpleAccent),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "Monitor",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Black),
+                                color = Color.White
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowForward,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Visual mini bars for signal strength (4 vertical bars representing level)
+@Composable
+fun SignalStrengthBars(rssi: Int, modifier: Modifier = Modifier) {
+    val barCount = when {
+        rssi >= -55 -> 4
+        rssi >= -70 -> 3
+        rssi >= -85 -> 2
+        else -> 1
+    }
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        val activeColor = when {
+            rssi >= -55 -> BentoGreenText
+            rssi >= -70 -> BentoAmberText
+            else -> MaterialTheme.colorScheme.error
+        }
+        val inactiveColor = BentoBorder.copy(alpha = 0.5f)
+
+        for (i in 1..4) {
+            val isFilled = i <= barCount
+            val heightDp = (i * 3).dp
+            Box(
+                modifier = Modifier
+                    .size(width = 3.dp, height = heightDp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(if (isFilled) activeColor else inactiveColor)
+            )
+        }
+    }
+}

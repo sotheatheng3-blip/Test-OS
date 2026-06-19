@@ -33,6 +33,20 @@ sealed class OtaState {
     data class Error(val error: String) : OtaState()
 }
 
+enum class ToastType {
+    INFO,
+    SUCCESS,
+    WARNING,
+    ERROR
+}
+
+data class ToastMessage(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val message: String,
+    val type: ToastType = ToastType.INFO,
+    val durationMs: Long = 3500L
+)
+
 // Telemetry information
 data class LiveTelemetry(
     val temperature: Float = 34.2f,
@@ -92,6 +106,16 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
     // OTA Update Status
     private val _otaState = MutableStateFlow<OtaState>(OtaState.Idle)
     val otaState: StateFlow<OtaState> = _otaState.asStateFlow()
+
+    // Toast Notification SharedFlow
+    private val _toastFlow = MutableSharedFlow<ToastMessage>(extraBufferCapacity = 5)
+    val toastFlow = _toastFlow.asSharedFlow()
+
+    fun showToast(message: String, type: ToastType = ToastType.INFO) {
+        viewModelScope.launch {
+            _toastFlow.emit(ToastMessage(message = message, type = type))
+        }
+    }
 
     // Secure Pairing Status
     private val _pairingState = MutableStateFlow<PairingState>(PairingState.Idle)
@@ -620,6 +644,21 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    // Simulation command for interactive drop connection testing
+    fun simulateUnexpectedDisconnect() {
+        val currentDevice = _activeDevice.value ?: return
+        viewModelScope.launch {
+            log(currentDevice.id, "ERROR", "CRITICAL: Suddenly lost link connection handshake carrier!")
+            deviceDao.updateDeviceStatus(currentDevice.id, "Disconnected", System.currentTimeMillis())
+            telemetryJob?.cancel()
+            _connectionState.value = "Disconnected"
+            _activeDevice.value = null
+            _telemetry.value = LiveTelemetry()
+            _otaState.value = OtaState.Idle
+            showToast("Connection to ${currentDevice.name} dropped unexpectedly!", ToastType.ERROR)
+        }
+    }
+
     // Disconnect active connection
     fun disconnectActive() {
         val current = _activeDevice.value ?: return
@@ -823,6 +862,7 @@ class DeviceViewModel(application: Application) : AndroidViewModel(application) 
             _otaState.value = OtaState.Success(shortVer)
             log(currentDevice.id, "INFO", "System reboot completed! Running Firmware version: $shortVer")
             log(currentDevice.id, "INFO", "Firmware integrity verified. Resuming live telemetry stream.")
+            showToast("Firmware updated to v$shortVer successfully!", ToastType.SUCCESS)
 
             // Restore telemetry loops
             startTelemetryStream(currentDevice.id)

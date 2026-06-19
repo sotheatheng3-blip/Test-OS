@@ -14,13 +14,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.animation.*
+import androidx.compose.ui.Alignment
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.DeviceViewModel
+import com.example.ui.ToastMessage
+import com.example.ui.ToastType
+import com.example.ui.components.ToastContainer
 import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.ScannerScreen
 import com.example.ui.screens.ControllerScreen
 import com.example.ui.screens.FirmwareScreen
 import com.example.ui.theme.*
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,77 +36,110 @@ class MainActivity : ComponentActivity() {
       MyApplicationTheme {
         val viewModel: DeviceViewModel = viewModel()
         var currentTab by remember { mutableStateOf("dashboard") } // "dashboard", "scanner", "control", "firmware"
-        
-        Scaffold(
-          modifier = Modifier.fillMaxSize(),
-          bottomBar = {
-            NavigationBar(
-              containerColor = BentoGreySurface,
-              tonalElevation = 8.dp,
-              windowInsets = WindowInsets.navigationBars
-            ) {
-              // Dashboard Tab
-              NavigationBarItem(
-                selected = currentTab == "dashboard",
-                onClick = { currentTab = "dashboard" },
-                label = { Text("Hub", fontWeight = FontWeight.SemiBold) },
-                icon = { Icon(Icons.Default.DeveloperBoard, contentDescription = "Dashboard") },
-                colors = navigationBarColorsStyle()
-              )
+        var activeToast by remember { mutableStateOf<ToastMessage?>(null) }
 
-              // Connect Scanner Tab
-              NavigationBarItem(
-                selected = currentTab == "scanner",
-                onClick = { currentTab = "scanner" },
-                label = { Text("Scanner", fontWeight = FontWeight.SemiBold) },
-                icon = { Icon(Icons.Default.BluetoothSearching, contentDescription = "Scan") },
-                colors = navigationBarColorsStyle()
-              )
-
-              // Realtime Control Tab
-              NavigationBarItem(
-                selected = currentTab == "control",
-                onClick = { currentTab = "control" },
-                label = { Text("Control", fontWeight = FontWeight.SemiBold) },
-                icon = { Icon(Icons.Default.Tune, contentDescription = "Controller") },
-                colors = navigationBarColorsStyle()
-              )
-
-              // Automated Firmware OTA Tab
-              NavigationBarItem(
-                selected = currentTab == "firmware",
-                onClick = { currentTab = "firmware" },
-                label = { Text("Updater", fontWeight = FontWeight.SemiBold) },
-                icon = { Icon(Icons.Default.SystemUpdate, contentDescription = "OTA Update") },
-                colors = navigationBarColorsStyle()
-              )
+        // Start collecting toasts triggered by the core or screens
+        LaunchedEffect(viewModel) {
+          viewModel.toastFlow.collect { toast ->
+            activeToast = toast
+            delay(toast.durationMs)
+            if (activeToast?.id == toast.id) {
+              activeToast = null
             }
-          },
-          contentWindowInsets = WindowInsets.safeDrawing
-        ) { innerPadding ->
-          Surface(
+          }
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+          Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+              NavigationBar(
+                containerColor = BentoGreySurface,
+                tonalElevation = 8.dp,
+                windowInsets = WindowInsets.navigationBars
+              ) {
+                // Dashboard Tab
+                NavigationBarItem(
+                  selected = currentTab == "dashboard",
+                  onClick = { currentTab = "dashboard" },
+                  label = { Text("Hub", fontWeight = FontWeight.SemiBold) },
+                  icon = { Icon(Icons.Default.DeveloperBoard, contentDescription = "Dashboard") },
+                  colors = navigationBarColorsStyle()
+                )
+
+                // Connect Scanner Tab
+                NavigationBarItem(
+                  selected = currentTab == "scanner",
+                  onClick = { currentTab = "scanner" },
+                  label = { Text("Scanner", fontWeight = FontWeight.SemiBold) },
+                  icon = { Icon(Icons.Default.BluetoothSearching, contentDescription = "Scan") },
+                  colors = navigationBarColorsStyle()
+                )
+
+                // Realtime Control Tab
+                NavigationBarItem(
+                  selected = currentTab == "control",
+                  onClick = { currentTab = "control" },
+                  label = { Text("Control", fontWeight = FontWeight.SemiBold) },
+                  icon = { Icon(Icons.Default.Tune, contentDescription = "Controller") },
+                  colors = navigationBarColorsStyle()
+                )
+
+                // Automated Firmware OTA Tab
+                NavigationBarItem(
+                  selected = currentTab == "firmware",
+                  onClick = { currentTab = "firmware" },
+                  label = { Text("Updater", fontWeight = FontWeight.SemiBold) },
+                  icon = { Icon(Icons.Default.SystemUpdate, contentDescription = "OTA Update") },
+                  colors = navigationBarColorsStyle()
+                )
+              }
+            },
+            contentWindowInsets = WindowInsets.safeDrawing
+          ) { innerPadding ->
+            Surface(
+              modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .background(BentoBg),
+              color = BentoBg
+            ) {
+              when (currentTab) {
+                "dashboard" -> DashboardScreen(
+                  viewModel = viewModel,
+                  onNavigateToScan = { currentTab = "scanner" },
+                  onNavigateToControl = { currentTab = "control" }
+                )
+                "scanner" -> ScannerScreen(
+                  viewModel = viewModel
+                )
+                "control" -> ControllerScreen(
+                  viewModel = viewModel,
+                  onNavigateToScan = { currentTab = "scanner" }
+                )
+                "firmware" -> FirmwareScreen(
+                  viewModel = viewModel,
+                  onNavigateToScan = { currentTab = "scanner" }
+                )
+              }
+            }
+          }
+
+          // Dynamic Animated Floating Toast Popup Overlay
+          AnimatedVisibility(
+            visible = activeToast != null,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
             modifier = Modifier
-              .fillMaxSize()
-              .padding(innerPadding)
-              .background(BentoBg),
-            color = BentoBg
+              .fillMaxWidth()
+              .align(Alignment.TopCenter)
+              .statusBarsPadding()
+              .padding(top = 16.dp)
           ) {
-            when (currentTab) {
-              "dashboard" -> DashboardScreen(
-                viewModel = viewModel,
-                onNavigateToScan = { currentTab = "scanner" },
-                onNavigateToControl = { currentTab = "control" }
-              )
-              "scanner" -> ScannerScreen(
-                viewModel = viewModel
-              )
-              "control" -> ControllerScreen(
-                viewModel = viewModel,
-                onNavigateToScan = { currentTab = "scanner" }
-              )
-              "firmware" -> FirmwareScreen(
-                viewModel = viewModel,
-                onNavigateToScan = { currentTab = "scanner" }
+            activeToast?.let { toast ->
+              ToastContainer(
+                toast = toast,
+                onDismiss = { activeToast = null }
               )
             }
           }

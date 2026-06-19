@@ -215,6 +215,34 @@ fun ControllerScreen(
                 }
             }
 
+            // Simulate Drop Connection block
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { viewModel.simulateUnexpectedDisconnect() },
+                        colors = ButtonDefaults.textButtonColors(contentColor = BentoAmberText)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LinkOff,
+                            contentDescription = "Simulate Unexpected Link Loss",
+                            modifier = Modifier.size(16.dp),
+                            tint = BentoAmberText
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Simulate Unexpected Link Loss",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = BentoAmberText
+                            )
+                        )
+                    }
+                }
+            }
+
             // Realtime Dials / Gauges Grid
             item {
                 Row(
